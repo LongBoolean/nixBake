@@ -1,7 +1,7 @@
 from bpy import *
 import bpy
 scene = bpy.context.scene
-selected = bpy.context.selected_objects
+
 object = bpy.ops.object
 
 class nixBake (bpy.types.Panel):
@@ -11,6 +11,7 @@ class nixBake (bpy.types.Panel):
     bl_category = 'NixBake'
     
     def draw (self, context):
+        selected = bpy.context.selected_objects
         layout = self.layout
         
         row = layout.row(align=False)
@@ -52,6 +53,7 @@ def toggleSelected():
     toggle(bpy.context.selected_objects)  
     
 def reLink():
+    selected = bpy.context.selected_objects
     for obj in selected:
         scene.objects.active = obj
         #obj = bpy.context.active_object
@@ -73,6 +75,7 @@ def reLink():
             imgLink = links.new(texNodeNix.outputs[0], emitNodeNix.inputs[0])
        
 def bake():
+    selected = bpy.context.selected_objects
     num_removed = 0
     for obj in selected:
         scene.objects.active = obj
@@ -174,31 +177,6 @@ def bake():
         scene.objects.active = selected[0]
         bpy.ops.object.bake(type="COMBINED")
 
-   
-def setupEmission():
-    num_removed = 0
-    for obj in selected:
-        scene.objects.active = obj
-        #obj = bpy.context.active_object
-        #check for existing texture
-        if obj.type == 'MESH':
-            validTex = False
-            emitExists = False
-            matnodes = bpy.context.active_object.material_slots[0].material.node_tree.nodes
-            imgnodes = [n for n in matnodes if n.type == 'TEX_IMAGE']
-            emitnodes = [n for n in matnodes if n.type == 'EMISSION']
-            for n in imgnodes:
-                if n.image.name == obj.name + '_bake' and n.name == 'BakeTex_nix':
-                    n.select = True
-                    matnodes.active = n
-                    validTex = True
-            for n in emitnodes:
-                if n.name == 'Emission_nix' and validTex:
-                    emitExists = True
-                    
-            #bpy.ops.node.add_node(type='ShaderNodeEmission')  
-            #bpy.ops.node.link(detach=False) 
-                   
    
 #Define Buttons
 class OBJECT_OT_buttonEmpty(bpy.types.Operator):
