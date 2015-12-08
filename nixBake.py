@@ -1,3 +1,6 @@
+#NixBake - Automate a baking workflow
+#Developer: Nicholas Peterson
+#GitHub: https://github.com/LongBoolean/nixBake
 from bpy import *
 import bpy
 bpy.types.Object.nix_img_width = bpy.props.IntProperty(
@@ -179,20 +182,8 @@ def bake(self):
                     newimg = bpy.data.images.new(obj.name + '_bake',obj.nix_img_width,obj.nix_img_height)
                     node.image = newimg
                 else:
-                    image_removed = False
                     node.image = bpy.data.images[image_index]  
-                    try:
-                        node.image.user_clear()
-                        try:        
-                            bpy.data.images.remove(node.image)
-                            image_removed = True
-                        except:
-                            image_removed = False
-                    except:
-                        image_removed = False
-                    if image_removed == True:
-                        newimg = bpy.data.images.new(obj.name + '_bake',obj.nix_img_width,obj.nix_img_height)
-                        node.image = newimg
+                    node.image.scale( obj.nix_img_width, obj.nix_img_height )
                             
                       
                     
@@ -266,4 +257,3 @@ def unregister():
 if __name__ == '__main__':
     register()
         
-    
