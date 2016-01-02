@@ -48,15 +48,17 @@ def toggle(objectList):
     for obj in objectList:
         scene.objects.active = obj
         if obj.type == 'MESH':  
-            matnodes = bpy.context.active_object.material_slots[0].material.node_tree.nodes
-            mixnodes = [n for n in matnodes if n.type == 'MIX_SHADER']
-            for n in mixnodes:
-                if n.name == 'mix_nix':
-                    val = n.inputs[0].default_value
-                    if val == 1:
-                        n.inputs[0].default_value = 0
-                    elif val == 0:
-                        n.inputs[0].default_value = 1
+            for mat in obj.material_slots:
+                node_tree = bpy.data.materials[mat.name].node_tree
+                matnodes = node_tree.nodes
+                mixnodes = [n for n in matnodes if n.type == 'MIX_SHADER']
+                for n in mixnodes:
+                    if n.name == 'mix_nix':
+                        val = n.inputs[0].default_value
+                        if val == 1:
+                            n.inputs[0].default_value = 0
+                        elif val == 0:
+                            n.inputs[0].default_value = 1
         else:
             obj.select = False         
                 
@@ -71,20 +73,21 @@ def reLink():
         #obj = bpy.context.active_object
         #check for existing texture
         if obj.type == 'MESH':
-            texNodeNix = None
-            emitNodeNix = None
-            node_tree = bpy.data.materials[obj.material_slots[0].material.name].node_tree
-            matnodes = bpy.context.active_object.material_slots[0].material.node_tree.nodes    
-            emitnodes = [n for n in matnodes if n.type == 'EMISSION']  
-            for n in emitnodes:
-                if n.name == 'emit_nix':
-                      emitNodeNix = n
-            imgnodes = [n for n in matnodes if n.type == 'TEX_IMAGE']         
-            for n in imgnodes:
-                if n.name == 'BakeTex_nix':
-                    texNodeNix = n
-            links = node_tree.links
-            imgLink = links.new(texNodeNix.outputs[0], emitNodeNix.inputs[0])
+            for mat in obj.material_slots:
+                texNodeNix = None
+                emitNodeNix = None
+                node_tree = bpy.data.materials[mat.name].node_tree
+                matnodes = node_tree.nodes    
+                emitnodes = [n for n in matnodes if n.type == 'EMISSION']  
+                for n in emitnodes:
+                    if n.name == 'emit_nix':
+                          emitNodeNix = n
+                imgnodes = [n for n in matnodes if n.type == 'TEX_IMAGE']         
+                for n in imgnodes:
+                    if n.name == 'BakeTex_nix':
+                        texNodeNix = n
+                links = node_tree.links
+                imgLink = links.new(texNodeNix.outputs[0], emitNodeNix.inputs[0])
        
 def bake(self):
     selected = bpy.context.selected_objects
@@ -100,15 +103,9 @@ def bake(self):
         #obj = bpy.context.active_object
         #check for existing texture
         if obj.type == 'MESH':
-            outNode = None
-            lastNode = None
-            mixNodeNix = None
-            texNodeNix = None
-            emitNodeNix = None
+
             texExists = False
-            imgExists = False
-            mixNixExists = False
-            emitExists = False
+
             matExists = False
             uvExists = False
             if len(bpy.context.active_object.material_slots) > 0:
@@ -125,79 +122,88 @@ def bake(self):
                 
                 
             if matExists == True and uvExists == True:
-                matnodes = bpy.context.active_object.material_slots[0].material.node_tree.nodes
-                outnodes = [n for n in matnodes if n.type == 'OUTPUT_MATERIAL']
-                for n in outnodes:
-                    outNode = n
-                    lastNode = outNode.inputs[0].links[0].from_node
-                    break
-                
-                mixnodes = [n for n in matnodes if n.type == 'MIX_SHADER']
-                for n in mixnodes:
-                    if n.name == 'mix_nix':
-                        mixNixExists = True
-                        mixNodeNix = n
-                        
-                if not mixNixExists:
-                    node_tree = bpy.data.materials[obj.material_slots[0].material.name].node_tree
-                    node = node_tree.nodes.new("ShaderNodeMixShader")
-                    node.name = 'mix_nix'
-                    mixNodeNix = node
-                    mixNodeNix.inputs[0].default_value = 0
+                for mat in obj.material_slots:
+                    outNode = None
+                    lastNode = None
+                    mixNodeNix = None
+                    texNodeNix = None
+                    emitNodeNix = None
+                    imgExists = False
+                    mixNixExists = False
+                    emitExists = False
+                    matnodes = mat.material.node_tree.nodes
+                    outnodes = [n for n in matnodes if n.type == 'OUTPUT_MATERIAL']
+                    for n in outnodes:
+                        outNode = n
+                        lastNode = outNode.inputs[0].links[0].from_node
+                        break
                     
-                emitnodes = [n for n in matnodes if n.type == 'EMISSION']  
-                for n in emitnodes:
-                    if n.name == 'emit_nix':
-                          emitExists = True
-                          emitNodeNix = n
-                if not emitExists:
-                    node_tree = bpy.data.materials[obj.material_slots[0].material.name].node_tree
-                    node = node_tree.nodes.new("ShaderNodeEmission")    
-                    node.name = 'emit_nix'
-                    emitNodeNix = node     
-                    
-                imgnodes = [n for n in matnodes if n.type == 'TEX_IMAGE']         
-                for n in imgnodes:
-                    if n.name == 'BakeTex_nix':
-                        n.select = True
-                        matnodes.active = n
-                        texExists = True
-                        texNodeNix = n
-
-                #otherwise create texture node
-                if not texExists:    
-                    node_tree = bpy.data.materials[obj.material_slots[0].material.name].node_tree
-                    node = node_tree.nodes.new("ShaderNodeTexImage")
-                    node.name = 'BakeTex_nix'
-                    node.select = True
-                    node_tree.nodes.active = node
-                    texNodeNix = node
-                else:
-                    node = bpy.data.materials[obj.material_slots[0].material.name].node_tree.nodes['BakeTex_nix']
-                     
-                    texNodeNix = node
-                #check for image
-                image_index = bpy.data.images.find(obj.name + '_bake')
-                if image_index == -1:
-                    newimg = bpy.data.images.new(obj.name + '_bake',obj.nix_img_width,obj.nix_img_height)
-                    node.image = newimg
-                else:
-                    node.image = bpy.data.images[image_index]  
-                    node.image.scale( obj.nix_img_width, obj.nix_img_height )
+                    mixnodes = [n for n in matnodes if n.type == 'MIX_SHADER']
+                    for n in mixnodes:
+                        if n.name == 'mix_nix':
+                            mixNixExists = True
+                            mixNodeNix = n
                             
-                      
+                    if not mixNixExists:
+                        node_tree = bpy.data.materials[mat.name].node_tree
+                        node = node_tree.nodes.new("ShaderNodeMixShader")
+                        node.name = 'mix_nix'
+                        mixNodeNix = node
+                        mixNodeNix.inputs[0].default_value = 0
+                        
+                    emitnodes = [n for n in matnodes if n.type == 'EMISSION']  
+                    for n in emitnodes:
+                        if n.name == 'emit_nix':
+                              emitExists = True
+                              emitNodeNix = n
+                    if not emitExists:
+                        node_tree = bpy.data.materials[mat.name].node_tree
+                        node = node_tree.nodes.new("ShaderNodeEmission")    
+                        node.name = 'emit_nix'
+                        emitNodeNix = node     
+                        
+                    imgnodes = [n for n in matnodes if n.type == 'TEX_IMAGE']         
+                    for n in imgnodes:
+                        if n.name == 'BakeTex_nix':
+                            n.select = True
+                            matnodes.active = n
+                            texExists = True
+                            texNodeNix = n
+
+                    #otherwise create texture node
+                    if not texExists:    
+                        node_tree = bpy.data.materials[mat.name].node_tree
+                        node = node_tree.nodes.new("ShaderNodeTexImage")
+                        node.name = 'BakeTex_nix'
+                        node.select = True
+                        node_tree.nodes.active = node
+                        texNodeNix = node
+                    else:
+                        node = bpy.data.materials[mat.name].node_tree.nodes['BakeTex_nix']
+                         
+                        texNodeNix = node
+                    #check for image
+                    image_index = bpy.data.images.find(obj.name + '_bake')
+                    if image_index == -1:
+                        newimg = bpy.data.images.new(obj.name + '_bake',obj.nix_img_width,obj.nix_img_height)
+                        node.image = newimg
+                    else:
+                        node.image = bpy.data.images[image_index]  
+                        node.image.scale( obj.nix_img_width, obj.nix_img_height )
+                                
+                          
+                        
+                    #Link nodes together
+                    node_tree = bpy.data.materials[mat.name].node_tree
+                    links = node_tree.links
+                    imgLink = links.new(texNodeNix.outputs[0], emitNodeNix.inputs[0])
+                    links.new(emitNodeNix.outputs[0], mixNodeNix.inputs[2])
+                    if not mixNixExists:
+                        links.new(lastNode.outputs[0], mixNodeNix.inputs[1])
+                        links.new(mixNodeNix.outputs[0], outNode.inputs[0])
                     
-                #Link nodes together
-                node_tree = bpy.data.materials[obj.material_slots[0].material.name].node_tree
-                links = node_tree.links
-                imgLink = links.new(texNodeNix.outputs[0], emitNodeNix.inputs[0])
-                links.new(emitNodeNix.outputs[0], mixNodeNix.inputs[2])
-                if not mixNixExists:
-                    links.new(lastNode.outputs[0], mixNodeNix.inputs[1])
-                    links.new(mixNodeNix.outputs[0], outNode.inputs[0])
-                
-                #Unlink image node for baking
-                links.remove(imgLink)
+                    #Unlink image node for baking
+                    links.remove(imgLink)
             else:
                 obj.select = False
                 num_removed += 1
