@@ -1,6 +1,17 @@
 #NixBake - Automate a baking workflow
 #Developer: Nicholas Peterson
 #GitHub: https://github.com/LongBoolean/nixBake
+
+#Instructions:
+#   Paste script into blender's text editor and click 'Run Script' button.
+#   The 'NixBake' tab will be added to the toolbar of the 3D view.
+#   Unwrap your object and create a material before baking.
+#   Select your objects and click the 'Cycles Bake Selected' button to bake your textures. 
+#       This will also add a few nodes to the object's material. 
+#       (If something goes wrong you can delete these nodes and rebake to recreate the node setup)
+#   The 'Toggle Material Output' button will allow you to view the baked image on the object in
+#       cycles. (Ensure that viewport shading is set to 'Material' in the 3D view.) 
+
 from bpy import *
 import bpy
 bpy.types.Object.nix_img_width = bpy.props.IntProperty(
@@ -108,13 +119,13 @@ def bake(self):
 
             matExists = False
             uvExists = False
-            if len(bpy.context.active_object.material_slots) > 0:
+            if len(obj.material_slots) > 0:
                 matExists = True
             else:
                 self.report({'ERROR'}, "Object Requires Material")
                 matExists = False
                 
-            if len(bpy.context.active_object.data.uv_layers) > 0:
+            if len(obj.data.uv_layers) > 0:
                 uvExists = True
             else:
                 self.report({'ERROR'}, "Object Requires UV Mapping")
@@ -123,6 +134,7 @@ def bake(self):
                 
             if matExists == True and uvExists == True:
                 for mat in obj.material_slots:
+                    bpy.data.materials[mat.name].use_nodes = True
                     outNode = None
                     lastNode = None
                     mixNodeNix = None
@@ -135,7 +147,7 @@ def bake(self):
                     outnodes = [n for n in matnodes if n.type == 'OUTPUT_MATERIAL']
                     for n in outnodes:
                         outNode = n
-                        lastNode = outNode.inputs[0].links[0].from_node
+                        lastNode = outNode.inputs[0].links[0].from_node #fixme: can cause error if no connection
                         break
                     
                     mixnodes = [n for n in matnodes if n.type == 'MIX_SHADER']
