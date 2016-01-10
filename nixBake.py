@@ -18,6 +18,8 @@ bpy.types.Object.nix_img_width = bpy.props.IntProperty(
 name="Image Width", default=1024, min=0, description="bake image width")
 bpy.types.Object.nix_img_height = bpy.props.IntProperty(
 name="Image Height", default=1024, min=0, description="bake image height")
+bpy.types.Object.img_name_ext_bool = bpy.props.BoolProperty(
+name="bake effects image name", default=False, description="include bake type in image name")
     
 class nixBake (bpy.types.Panel):
     bl_label = 'Nix Bake'
@@ -39,6 +41,11 @@ class nixBake (bpy.types.Panel):
         #row = layout.row(align=False)
        # row.label('Important: Unwrap before baking.', icon='ERROR')
         row = layout.row(align=False)
+               
+        row.prop(scene.cycles, "bake_type") 
+        layout.prop(active_obj, "img_name_ext_bool")
+        row = layout.row(align=False)
+        
         row.operator('nix.bake', icon='RENDER_STILL', text='Cycles Bake Selected')
         num = len(bpy.context.selected_objects)
         if bpy.context.scene.render.engine != 'CYCLES' or num < 1:
@@ -122,13 +129,13 @@ def bake(self):
             if len(obj.material_slots) > 0:
                 matExists = True
             else:
-                self.report({'ERROR'}, "Object Requires Material")
+                self.report({'ERROR'}, obj.name + " Requires Material")
                 matExists = False
                 
             if len(obj.data.uv_layers) > 0:
                 uvExists = True
             else:
-                self.report({'ERROR'}, "Object Requires UV Mapping")
+                self.report({'ERROR'}, obj.name + " Requires UV Mapping")
                 uvExists = False
                 
                 
@@ -195,9 +202,12 @@ def bake(self):
                          
                         texNodeNix = node
                     #check for image
-                    image_index = bpy.data.images.find(obj.name + '_bake')
+                    img_ext = '_bake'
+                    if obj.img_name_ext_bool == True:
+                        img_ext = img_ext + '_' + scene.cycles.bake_type
+                    image_index = bpy.data.images.find(obj.name + img_ext)
                     if image_index == -1:
-                        newimg = bpy.data.images.new(obj.name + '_bake',obj.nix_img_width,obj.nix_img_height)
+                        newimg = bpy.data.images.new(obj.name + img_ext,obj.nix_img_width,obj.nix_img_height)
                         node.image = newimg
                     else:
                         node.image = bpy.data.images[image_index]  
@@ -232,7 +242,8 @@ def bake(self):
     wm.windows[0].cursor_set('WAIT')
     if len(selected) - num_removed > 0:
         scene.objects.active = selected[0]
-        bpy.ops.object.bake(type="COMBINED")
+        bakeType = scene.cycles.bake_type
+        bpy.ops.object.bake(type=bakeType)
     wm.windows[0].cursor_set('DEFAULT')
     #wm.progress_end()
 
@@ -266,6 +277,7 @@ class OBJECT_OT_buttonEmpty(bpy.types.Operator):
         toggleSelected()
         #self.report({'INFO'}, "Toggling material output.")
         return{'FINISHED'}    
+    
 def register():
     bpy.utils.register_module(__name__)
         
