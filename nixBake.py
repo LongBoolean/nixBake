@@ -35,15 +35,17 @@ class nixBake (bpy.types.Panel):
         active_obj = bpy.context.active_object
         layout = self.layout
         
-        layout.prop(active_obj, "nix_img_width")
-        layout.prop(active_obj, "nix_img_height")
+        if active_obj != None:
+            layout.prop(active_obj, "nix_img_width")
+            layout.prop(active_obj, "nix_img_height")
         
         #row = layout.row(align=False)
        # row.label('Important: Unwrap before baking.', icon='ERROR')
         row = layout.row(align=False)
                
         row.prop(scene.cycles, "bake_type") 
-        layout.prop(active_obj, "img_name_ext_bool")
+        if active_obj != None:
+            layout.prop(active_obj, "img_name_ext_bool")
         row = layout.row(align=False)
         
         row.operator('nix.bake', icon='RENDER_STILL', text='Cycles Bake Selected')
