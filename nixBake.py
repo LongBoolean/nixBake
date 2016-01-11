@@ -2,8 +2,13 @@
 #Developer: Nicholas Peterson
 #GitHub: https://github.com/LongBoolean/nixBake
 
-#Instructions:
-#   Paste script into blender's text editor and click 'Run Script' button.
+#Install:
+#   Go to the add-ons section in user preferences and click "install from file" 
+#   Choose nixBake.py file and click "install from file" to install.
+#   To enable the "NixBake" add-on check the checkbox.
+#   Remember to click "Save User Settings" if you want these changes to take effect
+#       the next time you start blender.
+#Usage:
 #   The 'NixBake' tab will be added to the toolbar of the 3D view.
 #   Unwrap your object and create a material before baking.
 #   Select your objects and click the 'Cycles Bake Selected' button to bake your textures. 
@@ -11,6 +16,15 @@
 #       (If something goes wrong you can delete these nodes and rebake to recreate the node setup)
 #   The 'Toggle Material Output' button will allow you to view the baked image on the object in
 #       cycles. (Ensure that viewport shading is set to 'Material' in the 3D view.) 
+bl_info = {
+    "name" : "NixBake",
+    "author" : "Nicholas Peterson",
+    "version" : (0,1),
+    "blender" : (2, 76, 0),
+    "location" : "View3D > Tools",
+    "description" : "Tool to automate a baking workflow.",
+    "category" : "Baking"
+}
 
 from bpy import *
 import bpy
@@ -26,8 +40,6 @@ class nixBake (bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
     bl_category = 'NixBake'
-    
-
             
     def draw (self, context):
         scene = bpy.context.scene
@@ -36,11 +48,10 @@ class nixBake (bpy.types.Panel):
         layout = self.layout
         
         if active_obj != None:
-            layout.prop(active_obj, "nix_img_width")
-            layout.prop(active_obj, "nix_img_height")
+            col = layout.column(align=True)
+            col.prop(active_obj, "nix_img_width")
+            col.prop(active_obj, "nix_img_height")
         
-        #row = layout.row(align=False)
-       # row.label('Important: Unwrap before baking.', icon='ERROR')
         row = layout.row(align=False)
                
         row.prop(scene.cycles, "bake_type") 
@@ -57,6 +68,7 @@ class nixBake (bpy.types.Panel):
         row.label('Note: Baking can take a long time.', icon='INFO')
         row = layout.row(align=False)
         row.operator('nix.toggle', text='Toggle Material Output')
+        
         #matnodes = bpy.context.active_object.material_slots[0].material.node_tree.nodes
         #outnodes = [n for n in matnodes if n.type == 'OUTPUT_MATERIAL' and n.name =='matOutput_nix']
         if len(selected) < 1:
