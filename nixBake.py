@@ -19,7 +19,7 @@
 bl_info = {
     "name" : "NixBake",
     "author" : "Nicholas Peterson",
-    "version" : (0,1),
+    "version" : (0,1,2),
     "blender" : (2, 76, 0),
     "location" : "View3D > Tools",
     "description" : "Tool to automate a baking workflow.",
@@ -32,9 +32,12 @@ bpy.types.Object.nix_img_width = bpy.props.IntProperty(
 name="Image Width", default=1024, min=0, description="bake image width")
 bpy.types.Object.nix_img_height = bpy.props.IntProperty(
 name="Image Height", default=1024, min=0, description="bake image height")
-bpy.types.Object.img_name_ext_bool = bpy.props.BoolProperty(
+bpy.types.Scene.img_name_ext_bool = bpy.props.BoolProperty(
 name="bake effects image name", default=False, description="include bake type in image name")
-    
+bpy.types.Scene.toggle_material_bool = bpy.props.BoolProperty(
+name="add nodes for material toggle", default=False, description="add nodes for material toggle (takes effect after rebaking)")
+nodeError = False
+
 class nixBake (bpy.types.Panel):
     bl_label = 'Nix Bake'
     bl_space_type = 'VIEW_3D'
@@ -56,17 +59,21 @@ class nixBake (bpy.types.Panel):
                
         row.prop(scene.cycles, "bake_type") 
         if active_obj != None:
-            layout.prop(active_obj, "img_name_ext_bool")
+            layout.prop(scene, "img_name_ext_bool")
         row = layout.row(align=False)
-        
+        row.label('Note: Baking can take a long time.', icon='INFO')
+        row = layout.row(align=False)
         row.operator('nix.bake', icon='RENDER_STILL', text='Cycles Bake Selected')
         num = len(bpy.context.selected_objects)
         if bpy.context.scene.render.engine != 'CYCLES' or num < 1:
             row.enabled = False
         row = layout.row(align=False)
-        
-        row.label('Note: Baking can take a long time.', icon='INFO')
+        row.label('')#space
         row = layout.row(align=False)
+        row.prop(scene, "toggle_material_bool")
+        row = layout.row(align=False)
+        if bpy.context.scene.render.engine != 'CYCLES' or num < 1 or scene.toggle_material_bool == False:
+            row.enabled = False
         row.operator('nix.toggle', text='Toggle Material Output')
         
         #matnodes = bpy.context.active_object.material_slots[0].material.node_tree.nodes
@@ -118,10 +125,65 @@ def reLink():
                 for n in imgnodes:
                     if n.name == 'BakeTex_nix':
                         texNodeNix = n
+                #create between image and emission node
                 links = node_tree.links
                 imgLink = links.new(texNodeNix.outputs[0], emitNodeNix.inputs[0])
        
+def finalize():
+    global nodeError
+    scene = bpy.context.scene
+    if scene.toggle_material_bool == False or nodeError:
+        removeNodes();
+        nodeError = False
+def removeNodes():
+    scene = bpy.context.scene
+    selected = bpy.context.selected_objects
+    for obj in selected:
+        scene.objects.active = obj
+        #obj = bpy.context.active_object
+        #check for existing texture
+        if obj.type == 'MESH':
+            for mat in obj.material_slots:
+                texNodeNix = None
+                emitNodeNix = None
+                mixNodeNix = None
+                node_tree = bpy.data.materials[mat.name].node_tree
+                matnodes = node_tree.nodes    
+                emitnodes = [n for n in matnodes if n.type == 'EMISSION']  
+                for n in emitnodes:
+                    if n.name == 'emit_nix':
+                          emitNodeNix = n
+                imgnodes = [n for n in matnodes if n.type == 'TEX_IMAGE']         
+                for n in imgnodes:
+                    if n.name == 'BakeTex_nix':
+                        texNodeNix = n
+                mixnodes = [n for n in matnodes if n.type == 'MIX_SHADER']         
+                for n in mixnodes:
+                    if n.name == 'mix_nix':
+                        mixNodeNix = n
+                #remove the added nix nodes from the material
+                if texNodeNix:
+                    node_tree.nodes.remove(texNodeNix)
+                if emitNodeNix:
+                    node_tree.nodes.remove(emitNodeNix)
+                if mixNodeNix:
+                    #relink to material node
+                    goOn = True;
+                    if len(mixNodeNix.inputs[1].links) > 0:
+                        lastNode = mixNodeNix.inputs[1].links[0].from_node 
+                    else:
+                        goOn = False
+                    if len(mixNodeNix.outputs[0].links) > 0:
+                        outNode = mixNodeNix.outputs[0].links[0].to_node 
+                    else:
+                        goOn = False
+                    links = node_tree.links
+                    if goOn:
+                        links.new(lastNode.outputs[0], outNode.inputs[0])#fixme: will choose wrong slot if lastNode used other than slot 0
+                    node_tree.nodes.remove(mixNodeNix)
+            
 def bake(self):
+    global nodeError
     selected = bpy.context.selected_objects
     scene = bpy.context.scene
     num_removed = 0
@@ -158,6 +220,7 @@ def bake(self):
                     bpy.data.materials[mat.name].use_nodes = True
                     outNode = None
                     lastNode = None
+                    lastNodeError = True
                     mixNodeNix = None
                     texNodeNix = None
                     emitNodeNix = None
@@ -168,7 +231,12 @@ def bake(self):
                     outnodes = [n for n in matnodes if n.type == 'OUTPUT_MATERIAL']
                     for n in outnodes:
                         outNode = n
-                        lastNode = outNode.inputs[0].links[0].from_node #fixme: can cause error if no connection
+                        if len(outNode.inputs[0].links) > 0:
+                            lastNode = outNode.inputs[0].links[0].from_node 
+                            lastNodeError = False
+                        else:
+                            self.report({'ERROR'}, obj.name + " material nodes not connected to output.")
+                            nodeError = True
                         break
                     
                     mixnodes = [n for n in matnodes if n.type == 'MIX_SHADER']
@@ -217,7 +285,7 @@ def bake(self):
                         texNodeNix = node
                     #check for image
                     img_ext = '_bake'
-                    if obj.img_name_ext_bool == True:
+                    if scene.img_name_ext_bool == True:
                         img_ext = img_ext + '_' + scene.cycles.bake_type
                     image_index = bpy.data.images.find(obj.name + img_ext)
                     if image_index == -1:
@@ -228,16 +296,17 @@ def bake(self):
                         node.image.scale( obj.nix_img_width, obj.nix_img_height )
                                 
                           
-                        
+                       
                     #Link nodes together
                     node_tree = bpy.data.materials[mat.name].node_tree
                     links = node_tree.links
                     imgLink = links.new(texNodeNix.outputs[0], emitNodeNix.inputs[0])
                     links.new(emitNodeNix.outputs[0], mixNodeNix.inputs[2])
-                    if not mixNixExists:
-                        links.new(lastNode.outputs[0], mixNodeNix.inputs[1])
-                        links.new(mixNodeNix.outputs[0], outNode.inputs[0])
-                    
+                    if scene.toggle_material_bool == True: 
+                        if not mixNixExists and not lastNodeError:
+                            links.new(lastNode.outputs[0], mixNodeNix.inputs[1]) #fixme: will choose wrong slot if lastNode used other than slot 0
+                            links.new(mixNodeNix.outputs[0], outNode.inputs[0])
+                            
                     #Unlink image node for baking
                     links.remove(imgLink)
             else:
@@ -267,10 +336,10 @@ class OBJECT_OT_buttonEmpty(bpy.types.Operator):
     bl_label = 'Cycles'
     bl_idname = 'nix.bake'
     bl_description = 'Bake selected objects material to texture (and set up required nodes to do so)'
-    
     def execute(self, context): 
         bake(self)
         reLink()
+        finalize()
         #self.report({'INFO'}, "finished baking")
         return{'FINISHED'}
 class OBJECT_OT_buttonEmpty(bpy.types.Operator):
