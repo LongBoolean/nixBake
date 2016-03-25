@@ -8,6 +8,7 @@
 #   To enable the "NixBake" add-on check the checkbox.
 #   Remember to click "Save User Settings" if you want these changes to take effect
 #       the next time you start blender.
+#   To update the addon, remove the old version, and reinstall the new version as before. 
 #Usage:
 #   The 'NixBake' tab will be added to the toolbar of the 3D view.
 #   Unwrap your object and create a material before baking.
@@ -19,8 +20,8 @@
 bl_info = {
     "name" : "NixBake",
     "author" : "Nicholas Peterson",
-    "version" : (0,1,2),
-    "blender" : (2, 76, 0),
+    "version" : (0,1,3),
+    "blender" : (2, 77, 0),
     "location" : "View3D > Tools",
     "description" : "Tool to automate a baking workflow.",
     "category" : "Baking"
@@ -36,7 +37,8 @@ bpy.types.Scene.img_name_ext_bool = bpy.props.BoolProperty(
 name="bake effects image name", default=False, description="include bake type in image name")
 bpy.types.Scene.toggle_material_bool = bpy.props.BoolProperty(
 name="add nodes for material toggle", default=False, description="add nodes for material toggle (takes effect after rebaking)")
-nodeError = False
+nix_nodeError = False
+nix_current_shade = 'SOLID'
 
 class nixBake (bpy.types.Panel):
     bl_label = 'Nix Bake'
@@ -49,17 +51,56 @@ class nixBake (bpy.types.Panel):
         selected = bpy.context.selected_objects
         active_obj = bpy.context.active_object
         layout = self.layout
+        cscene = scene.cycles
+        cbk = scene.render.bake
         
         if active_obj != None:
             col = layout.column(align=True)
             col.prop(active_obj, "nix_img_width")
             col.prop(active_obj, "nix_img_height")
-        
-        row = layout.row(align=False)
-               
-        row.prop(scene.cycles, "bake_type") 
-        if active_obj != None:
             layout.prop(scene, "img_name_ext_bool")
+        
+        col = layout.column()   
+        
+        col.prop(cscene, "bake_type") 
+        
+        col = layout.column()
+        
+        if cscene.bake_type == 'NORMAL':
+            col.prop(cbk, "normal_space", text="Space")
+
+            row = col.row(align=True)
+            row.label(text="Swizzle:")
+            row.prop(cbk, "normal_r", text="")
+            row.prop(cbk, "normal_g", text="")
+            row.prop(cbk, "normal_b", text="")
+
+        elif cscene.bake_type == 'COMBINED':
+            row = col.row(align=True)
+            row.prop(cbk, "use_pass_direct", toggle=True)
+            row.prop(cbk, "use_pass_indirect", toggle=True)
+
+            split = col.split()
+            split.active = cbk.use_pass_direct or cbk.use_pass_indirect
+
+            col = split.column()
+            col.prop(cbk, "use_pass_diffuse")
+            col.prop(cbk, "use_pass_glossy")
+            col.prop(cbk, "use_pass_transmission")
+
+            col = split.column()
+            col.prop(cbk, "use_pass_subsurface")
+            col.prop(cbk, "use_pass_ambient_occlusion")
+            col.prop(cbk, "use_pass_emit")
+
+        elif cscene.bake_type in {'DIFFUSE', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE'}:
+            row = col.row(align=True)
+            row.prop(cbk, "use_pass_direct", toggle=True)
+            row.prop(cbk, "use_pass_indirect", toggle=True)
+            row.prop(cbk, "use_pass_color", toggle=True)
+        
+        col = layout.column()
+        
         row = layout.row(align=False)
         row.label('Note: Baking can take a long time.', icon='INFO')
         row = layout.row(align=False)
@@ -67,21 +108,31 @@ class nixBake (bpy.types.Panel):
         num = len(bpy.context.selected_objects)
         if bpy.context.scene.render.engine != 'CYCLES' or num < 1:
             row.enabled = False
+            
         row = layout.row(align=False)
-        row.label('')#space
+        col = layout.column()
         row = layout.row(align=False)
+        
         row.prop(scene, "toggle_material_bool")
         row = layout.row(align=False)
         if bpy.context.scene.render.engine != 'CYCLES' or num < 1 or scene.toggle_material_bool == False:
             row.enabled = False
         row.operator('nix.toggle', text='Toggle Material Output')
+        row.operator('nix.shade', icon= 'MATERIAL_DATA',text='')
         
         #matnodes = bpy.context.active_object.material_slots[0].material.node_tree.nodes
         #outnodes = [n for n in matnodes if n.type == 'OUTPUT_MATERIAL' and n.name =='matOutput_nix']
         if len(selected) < 1:
             row.enabled = False
    
-        
+def shade():
+    global nix_current_shade
+    if bpy.context.space_data.viewport_shade == 'MATERIAL':
+        bpy.context.space_data.viewport_shade = nix_current_shade
+    else:
+        nix_current_shade = bpy.context.space_data.viewport_shade
+        bpy.context.space_data.viewport_shade = 'MATERIAL'
+    
 def toggle(objectList):   
     scene = bpy.context.scene
     for obj in objectList:
@@ -130,11 +181,11 @@ def reLink():
                 imgLink = links.new(texNodeNix.outputs[0], emitNodeNix.inputs[0])
        
 def finalize():
-    global nodeError
+    global nix_nodeError
     scene = bpy.context.scene
-    if scene.toggle_material_bool == False or nodeError:
+    if scene.toggle_material_bool == False or nix_nodeError:
         removeNodes();
-        nodeError = False
+        nix_nodeError = False
 def removeNodes():
     scene = bpy.context.scene
     selected = bpy.context.selected_objects
@@ -183,7 +234,7 @@ def removeNodes():
                     node_tree.nodes.remove(mixNodeNix)
             
 def bake(self):
-    global nodeError
+    global nix_nodeError
     selected = bpy.context.selected_objects
     scene = bpy.context.scene
     num_removed = 0
@@ -236,7 +287,7 @@ def bake(self):
                             lastNodeError = False
                         else:
                             self.report({'ERROR'}, obj.name + " material nodes not connected to output.")
-                            nodeError = True
+                            nix_nodeError = True
                         break
                     
                     mixnodes = [n for n in matnodes if n.type == 'MIX_SHADER']
@@ -359,7 +410,17 @@ class OBJECT_OT_buttonEmpty(bpy.types.Operator):
     def execute(self, context): 
         toggleSelected()
         #self.report({'INFO'}, "Toggling material output.")
-        return{'FINISHED'}    
+        return{'FINISHED'}   
+    
+class OBJECT_OT_buttonEmpty(bpy.types.Operator):
+    bl_label = 'Shade'
+    bl_idname = 'nix.shade'
+    bl_description = 'Toggle Viewport Shading'
+    
+    def execute(self, context): 
+        shade()
+        #self.report({'INFO'}, "Toggling viewport shading.")
+        return{'FINISHED'}   
     
 def register():
     bpy.utils.register_module(__name__)
